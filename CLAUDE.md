@@ -9,10 +9,10 @@ The owner is **learning** LoRA fine-tuning and MLOps. Explain non-obvious ML cho
 - [docs/experiments.md](docs/experiments.md) — experiment log and model lifecycle loop. Update after every train/eval run.
 
 ## Context
-1. `context/project-overview.md` — product definition, goals, features, and scope
-2. `context/architecture.md` — system structure, boundaries, storage model, and invariants
-6. `context/progress-tracker.md` — current phase, completed work, open questions, and next steps
+1. `docs/project-overview.md` — product definition, goals, features, and scope
+2. `docs/architecture.md` — system structure, boundaries, storage model, and invariants
+6. `docs/progress-tracker.md` — current phase, completed work, open questions, and next steps
 
-Update `context/progress-tracker.md` after eachmeaningful implementation change.
+Update `docs/progress-tracker.md` after eachmeaningful implementation change.
 
 If implementation changes the architecture, scope, orstandards documented in the context files, update the relevant file before continuing.

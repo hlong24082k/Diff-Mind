@@ -9,7 +9,7 @@ change.
 
 ## Current Goal
 
-- Finish Phase 0 setup, then build the shared prompt formatter (`src/data_pipeline/format_chat.py`, Phase 1).
+- Finish Phase 0 setup (0.2 keys, 0.3 teacher model ID), then Phase 2: raw diff curation.
 
 ## Completed
 
@@ -25,9 +25,11 @@ change.
 - Phase 0.2: owner needs to paste the two keys into `.env`.
 - Phase 0.3: verify the Gemini Flash Lite model ID. Blocked on the key.
 
+- Phase 1: `number_diff` and `build_messages` in `src/data_pipeline/format_chat.py`; tests in `tests/test_format_chat.py` (`pytest`, added to requirements).
+
 ## Next Up
 
-- Phase 1: `number_diff`, `build_messages` and a `__main__` self-check in `src/data_pipeline/format_chat.py` (owner writes, Claude reviews).
+- Phase 2: raw diff curation (`src/data_pipeline/curate_dataset.py`, step 1).
 
 ## Open Questions
 

@@ -17,9 +17,9 @@ Decisions made: teacher = Gemini Flash Lite (key via `.env`, model ID to verify)
 
 ## Phase 1 — Shared prompt formatter (`src/data_pipeline/format_chat.py`)
 *Why first:* the same function feeds the teacher labeler, evaluation, training (M2) and inference (M5). Writing it once prevents train/serve skew.
-- [ ] **1.1 `number_diff(diff: str) -> str`**: parse hunk headers `@@ -a,b +c,d @@`, track the new-file line counter, prefix lines. Key idea: `-` lines don't advance the new counter. *Done when:* a hand-made 2-hunk diff yields expected numbers (small `assert` in `__main__`).
-- [ ] **1.2 `build_messages(file_path, diff) -> list[dict]`**: system prompt from plan §3.2 + user prompt from 0.4. Returns `[{role, content}, ...]` (no assistant turn).
-- [ ] **1.3 Self-check** in `__main__` (project convention, like `schema.py`).
+- [x] **1.1 `number_diff(diff: str) -> str`**: parse hunk headers `@@ -a,b +c,d @@`, track the new-file line counter, prefix lines. Key idea: `-` lines don't advance the new counter. *Done when:* a hand-made 2-hunk diff yields expected numbers (small `assert` in `__main__`).
+- [x] **1.2 `build_messages(file_path, diff) -> list[dict]`**: system prompt from plan §3.2 + user prompt from 0.4. Returns `[{role, content}, ...]` (no assistant turn).
+- [x] **1.3 Self-check** in `__main__` (project convention, like `schema.py`).
 - (EOS / `apply_chat_template` verification belongs to M2; don't build it now.)
 
 ## Phase 2 — Raw diff curation (`src/data_pipeline/curate_dataset.py`, step 1)
@@ -62,7 +62,7 @@ Decisions made: teacher = Gemini Flash Lite (key via `.env`, model ID to verify)
 Evaluation runs end-to-end on all 150 test samples, outputs a full metrics table, and survives malformed outputs; dataset published on HF Hub; baseline logged.
 
 ## Verification
-- `python -m src.schema` and `python -m src.data_pipeline.format_chat` pass their self-checks.
+- `pytest` passes (schema + format_chat tests in `tests/`).
 - Dataset: counts 1200/150/150, ~60% defective in each split, zero overlap.
 - Evaluate: run on a stub that returns garbage text; harness reports 0% validity without raising.
 - Cost/risk: estimate the teacher API cost on 50 diffs before the full run; labeling is the one expensive/slow step.

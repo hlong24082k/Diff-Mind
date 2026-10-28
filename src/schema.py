@@ -26,18 +26,3 @@ class PRReviewOutput(BaseModel):
             raise ValueError("pass must be true iff reviews is empty")
         return self
 
-
-if __name__ == "__main__":
-    ok = PRReviewOutput.model_validate_json('{"pass": true, "reviews": []}')
-    assert ok.model_dump(by_alias=True) == {"pass": True, "reviews": []}
-    for bad in (
-        '{"pass": true, "reviews": [{"line": 1, "category": "BUG", "severity": "LOW", "comment": "x"}]}',
-        '{"pass": false, "reviews": []}',
-        '{"pass": false, "reviews": [{"line": 1, "category": "STYLE", "severity": "LOW", "comment": "x"}]}',
-    ):
-        try:
-            PRReviewOutput.model_validate_json(bad)
-        except ValueError:
-            continue
-        raise AssertionError(f"should have been rejected: {bad}")
-    print("schema ok")
