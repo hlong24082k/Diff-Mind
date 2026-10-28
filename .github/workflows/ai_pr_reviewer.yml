@@ -1,0 +1,8 @@
+# Placeholder until Milestone 5
+name: AI PR Reviewer
+on: workflow_dispatch
+jobs:
+  noop:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "not implemented"
