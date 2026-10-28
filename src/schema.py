@@ -4,7 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 Category = Literal["SECURITY", "BUG", "PERFORMANCE", "RESOURCE_LEAK"]
-Severity = Literal["LOW", "MEDIUM", "HIGH"]  # plan only shows HIGH; confirm full set in M1
+Severity = Literal["LOW", "MEDIUM", "HIGH"]  # rubric in PROJECT_PLAN.md §3.2
 
 
 class ReviewItem(BaseModel):

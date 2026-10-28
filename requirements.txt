@@ -5,3 +5,5 @@ pyyaml
 datasets
 huggingface_hub
 llama-cpp-python
+google-genai
+python-dotenv
