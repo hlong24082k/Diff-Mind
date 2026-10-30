@@ -39,17 +39,21 @@ change.
 
 - Phase 4.1-4.3, 4.5: `src/data_pipeline/publish_dataset.py` (split 1,071/132/132, leakage check, dataset columns, test hash); test in `tests/test_curate_dataset.py`.
 
+- Phase 5: `src/evaluation/evaluate.py` + `tests/test_evaluate.py` (15 tests pass). Run: `python -m src.evaluation.evaluate --model <x.gguf|repo-id|fake> --mode zero|two-shot --split validation --limit 10`. Writes `outputs/<run_id>/{predictions.jsonl,baseline_results.json}`. `--model fake` (garbage stub) gives 0% validity without crashing. **Not yet run on a real model** (no GGUF downloaded; Phase 6.1).
+
 ## Next Up
+
+- Phase 6.1: smoke test on ~10 validation examples with `Qwen/Qwen2.5-Coder-3B-Instruct-GGUF` (`--gguf-file '*q4_k_m.gguf'`, ~2 GB download), then 6.2 baselines on the test split. Note the test split is 132 rows, not 150.
 
 - Phase 4.4: push `data/dataset/` to the HF Hub (`.env` `HF_TOKEN` is read-only; needs a write token): `python -m src.data_pipeline.publish_dataset --push HLeon/pr-review-high-signal`, then record the revision in `docs/experiments.md` and set `dataset:` in `configs/qlora_config.yaml`. Then Phase 5 (evaluation harness).
 
 ## Open Questions
 
 - Exact Gemini Flash Lite model ID (check with a model-list call once the key is set).
-- Phase 5 matching rule for category metrics: diff-level category match (recommended) or category plus line within ±N.
-- Phase 5 model backend for baseline runs: local GGUF via `llama-cpp-python` or 4-bit HF load on Kaggle. It must stay the same across baseline runs.
 
 ## Architecture Decisions
+
+- **Phase 5 eval rules**: backend = local GGUF via `llama-cpp-python` (Q4_K_M), greedy, `max_tokens` 512, seed 42; keep it identical across baseline runs and use the same GGUF path for M3 (merged adapter) so comparisons stay apples-to-apples. Validity is strict (`PRReviewOutput.model_validate_json`, no fence stripping). Invalid output = not flagged: a miss for recall, not a false positive. Category F1 is diff-level over category *sets* (pred vs gold `label_json`); macro-F1 averages categories that appear in gold or predictions; line accuracy (±2 lines, only where the category matched) is reported separately. 2-shot examples = shortest defective + shortest clean train diffs (deterministic). `--limit` takes a seeded random subset (the splits are id-sorted).
 
 - **Phase 2 data sources**: `datasets` 5.x cannot run `bigcode/commitpackft`'s loading script, so it streams `data/python/data.jsonl` directly (`load_dataset("json", data_files="hf://...")`). CyberNative is a single JSONL file (`secure_programming_dpo.json`); 424 Python rows, code wrapped in markdown fences (stripped). Diffs are `difflib.unified_diff`, 3 context lines, `a/`/`b/` headers. Token counting uses the `tokenizers` library only (no `transformers`).
 - **Phase 2 known shortcut risks** (check at Phase 3.4/4): CyberNative rejected code often names things `vulnerable_function` or has "vulnerable" comments, and its diffs are whole-snippet rewrites, unlike real commits. Both could let the model learn "source style => defective". CyberNative paths are hash-picked from 8 generic names to avoid a constant-path shortcut. The dataset's own 2026-10-06 audit also says its chosen/rejected labels are noisy, so the teacher label (not the source) decides defective vs clean.

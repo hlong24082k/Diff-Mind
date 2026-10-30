@@ -44,13 +44,13 @@ Decisions made: teacher = Gemini Flash Lite (key via `.env`, model ID to verify)
 - [ ] **4.6 (optional)** `notebooks/01_dataset_curation.ipynb`: thin wrapper that calls the script and shows distributions.
 
 ## Phase 5 — Evaluation harness (`src/evaluation/evaluate.py`)
-- [ ] **5.1 CLI**: `--model`, `--mode {zero,two-shot}`, `--split test`, `--revision`, `--out`. Greedy decoding (`temperature=0`), fixed `max_tokens`, seed.
-- [ ] **5.2 Model backend for the Mac**: run the base model locally via `llama-cpp-python` (already in `requirements.txt`) with a GGUF of Qwen2.5-Coder-3B-Instruct (Q4_K_M or similar), *or* a 4-bit HF load on Kaggle. Pick one per run, keep it stable across baseline runs. (Note for M3: the adapter needs a GPU/merged GGUF, so decide the comparison path now to keep apples-to-apples.)
-- [ ] **5.3 Prompting**: zero-shot = `build_messages`; 2-shot = same plus 2 fixed few-shot pairs (1 defective, 1 clean) **taken from the train split, never test**; fixed across runs.
-- [ ] **5.4 Parsing**: `json.loads` + `PRReviewOutput.model_validate_json`; any exception = schema failure, never crash. Store raw output per example.
-- [ ] **5.5 Metrics** (plan §2): JSON/schema validity %; false-positive rate (clean diffs with `pass:false`); defect recall (defective with `pass:false`); macro-F1 over the 4 categories. Decide and write down the matching rule: *category match (diff-level) vs category + line within ±N*. Recommended simple default: diff-level category match, report line-accuracy separately. Invalid outputs count as failure for recall and as not-flagging for FP (state it).
-- [ ] **5.6 Outputs**: `outputs/<run_id>/predictions.jsonl` + `baseline_results.json` with metrics, config, model id, dataset revision, git commit.
-- [ ] **5.7 Tiny self-check**: run the metric function on 4 hand-made predictions (incl. malformed JSON) with `assert`s. *Done when:* a fake-model dry run on 5 examples finishes without crashing.
+- [x] **5.1 CLI**: `--model`, `--mode {zero,two-shot}`, `--split test`, `--revision`, `--out`. Greedy decoding (`temperature=0`), fixed `max_tokens`, seed.
+- [x] **5.2 Model backend for the Mac** *(llama-cpp-python GGUF: `--model` = .gguf path or HF GGUF repo id + `--gguf-file`; not yet run against a real model, that is 6.1)*: run the base model locally via `llama-cpp-python` (already in `requirements.txt`) with a GGUF of Qwen2.5-Coder-3B-Instruct (Q4_K_M or similar), *or* a 4-bit HF load on Kaggle. Pick one per run, keep it stable across baseline runs. (Note for M3: the adapter needs a GPU/merged GGUF, so decide the comparison path now to keep apples-to-apples.)
+- [x] **5.3 Prompting**: zero-shot = `build_messages`; 2-shot = same plus 2 fixed few-shot pairs (1 defective, 1 clean) **taken from the train split, never test**; fixed across runs.
+- [x] **5.4 Parsing**: `json.loads` + `PRReviewOutput.model_validate_json`; any exception = schema failure, never crash. Store raw output per example.
+- [x] **5.5 Metrics** (plan §2): JSON/schema validity %; false-positive rate (clean diffs with `pass:false`); defect recall (defective with `pass:false`); macro-F1 over the 4 categories. Decide and write down the matching rule: *category match (diff-level) vs category + line within ±N*. Recommended simple default: diff-level category match, report line-accuracy separately. Invalid outputs count as failure for recall and as not-flagging for FP (state it).
+- [x] **5.6 Outputs**: `outputs/<run_id>/predictions.jsonl` + `baseline_results.json` with metrics, config, model id, dataset revision, git commit.
+- [x] **5.7 Tiny self-check**: run the metric function on 4 hand-made predictions (incl. malformed JSON) with `assert`s. *Done when:* a fake-model dry run on 5 examples finishes without crashing.
 
 ## Phase 6 — Run baselines & log
 - [ ] **6.1 Smoke test** on ~10 validation examples (not test) to tune the harness/max_tokens.
