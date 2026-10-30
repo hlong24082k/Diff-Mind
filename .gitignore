@@ -8,4 +8,4 @@ outputs/
 wandb/
 *.gguf
 *.safetensors
-docs/
+.claude/

@@ -1,7 +1,12 @@
 # Local/CI deps only. Training deps (unsloth, trl, peft, bitsandbytes, wandb) are installed inside the Kaggle/Colab notebook.
-# TODO: pin exact versions (pip freeze) once M1 scripts run.
-pydantic
-pyyaml
-datasets
-huggingface_hub
-llama-cpp-python
+# Direct deps pinned to the versions M1 ran with (Python 3.12, `uv pip freeze`); transitive deps left to the resolver.
+pydantic==2.14.1
+pyyaml==6.0.3
+datasets==5.1.0
+huggingface_hub==2.3.0
+llama-cpp-python==0.3.36
+google-genai==2.33.0
+tokenizers==0.23.3
+python-dotenv==1.2.4
+matplotlib==3.11.2
+pytest==9.2.0
