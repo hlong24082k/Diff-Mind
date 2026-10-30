@@ -53,10 +53,10 @@ Decisions made: teacher = Gemini Flash Lite (key via `.env`, model ID to verify)
 - [x] **5.7 Tiny self-check**: run the metric function on 4 hand-made predictions (incl. malformed JSON) with `assert`s. *Done when:* a fake-model dry run on 5 examples finishes without crashing.
 
 ## Phase 6 — Run baselines & log
-- [ ] **6.1 Smoke test** on ~10 validation examples (not test) to tune the harness/max_tokens.
-- [ ] **6.2 Run `base-0shot` and `base-2shot`** on the full 150 test examples (run once; no prompt tuning on test). Prompt tweaks happen on validation only.
-- [ ] **6.3 Fill `docs/experiments.md`** rows `base-0shot`, `base-2shot` (date, dataset revision, commit, metrics, notes). Add a short baseline report: where baseline lands vs plan §2 targets, 3 observed failure patterns.
-- [ ] **6.4 Update CLAUDE.md status** ("M1 done") and pin `requirements.txt` versions (`pip freeze`) as its TODO says.
+- [x] **6.1 Smoke test** on ~10 validation examples (not test) to tune the harness/max_tokens.
+- [x] **6.2 Run `base-0shot` and `base-2shot`** on the full 150 test examples (run once; no prompt tuning on test). Prompt tweaks happen on validation only.
+- [x] **6.3 Fill `docs/experiments.md`** rows `base-0shot`, `base-2shot` (date, dataset revision, commit, metrics, notes). Add a short baseline report: where baseline lands vs plan §2 targets, 3 observed failure patterns.
+- [x] **6.4 Update CLAUDE.md status** ("M1 done") and pin `requirements.txt` versions (`pip freeze`) as its TODO says.
 
 ## Exit criteria (from plan)
 Evaluation runs end-to-end on all 150 test samples, outputs a full metrics table, and survives malformed outputs; dataset published on HF Hub; baseline logged.

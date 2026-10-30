@@ -5,7 +5,7 @@ change.
 
 ## Current Phase
 
-- Milestone 1 (Dataset Engineering & Baseline Harness), Phases 0–2 done, Phase 3 code done (full labeling run pending). Detailed to-do list: `docs/plans/milestone-1.md`.
+- Milestone 1 (Dataset Engineering & Baseline Harness): Phases 0–3, 5, 6 done; Phase 4 done except 4.4 (HF push, needs a write token). Detailed to-do list: `docs/plans/milestone-1.md`.
 
 ## Current Goal
 
@@ -31,6 +31,8 @@ change.
 
 ## In Progress
 
+- M1 Phase 6 done: `base-0shot` (JSON valid 0%: fenced + wrong schema) and `base-2shot` (valid 95.5%, FP 49.1%, recall 72.2%, macro-F1 0.375) on the 132-row test split; full report in `docs/experiments.md`. `requirements.txt` direct deps pinned. `python -m pytest` works; bare `pytest` fails with `No module named 'src'` (no conftest/pyproject).
+
 - Phase 0.3: verify the Gemini Flash Lite model ID. Blocked on the key.
 
 - Phase 1: `number_diff` and `build_messages` in `src/data_pipeline/format_chat.py`; tests in `tests/test_format_chat.py` (`pytest`, added to requirements).
@@ -42,6 +44,8 @@ change.
 - Phase 5: `src/evaluation/evaluate.py` + `tests/test_evaluate.py` (15 tests pass). Run: `python -m src.evaluation.evaluate --model <x.gguf|repo-id|fake> --mode zero|two-shot --split validation --limit 10`. Writes `outputs/<run_id>/{predictions.jsonl,baseline_results.json}`. `--model fake` (garbage stub) gives 0% validity without crashing. **Not yet run on a real model** (no GGUF downloaded; Phase 6.1).
 
 ## Next Up
+
+- M2 (QLoRA training). Before it: push the dataset (4.4) so training can pin a dataset revision.
 
 - Phase 6.1: smoke test on ~10 validation examples with `Qwen/Qwen2.5-Coder-3B-Instruct-GGUF` (`--gguf-file '*q4_k_m.gguf'`, ~2 GB download), then 6.2 baselines on the test split. Note the test split is 132 rows, not 150.
 
