@@ -9,8 +9,8 @@ Decisions made: teacher = Gemini Flash Lite (key via `.env`, model ID to verify)
 
 ## Phase 0 — Setup & decisions (do first)
 - [x] **0.1 Fix `.gitignore`**: it currently ignores `docs/` and `CLAUDE.md`, so `docs/experiments.md` (required by the MLOps rules) would never be committed. Remove those two lines. *Done when:* `git status` shows `docs/` as untracked.
-- [ ] **0.2 Create `.env`** (already gitignored) with `GEMINI_API_KEY=...` and `HF_TOKEN=...`. Add `google-genai` and `python-dotenv` to `requirements.txt`. Install in `.venv`. *(Status: requirements + `.venv` (Python 3.12) + `.env` placeholders done; **you still need to paste the two keys into `.env`** before checking this off.)*
-- [ ] **0.3 Verify the teacher model ID** with a one-off call (list models or a 1-line prompt). Don't hardcode a guessed ID; put it in a constant/CLI arg.
+- [x] **0.2 Create `.env`** (already gitignored) with `GEMINI_API_KEY=...` and `HF_TOKEN=...`. Add `google-genai` and `python-dotenv` to `requirements.txt`. Install in `.venv`. *(Status: requirements + `.venv` (Python 3.12) + `.env` placeholders done; **you still need to paste the two keys into `.env`** before checking this off.)*
+- [x] **0.3 Verify the teacher model ID** with a one-off call (list models or a 1-line prompt). Don't hardcode a guessed ID; put it in a constant/CLI arg.
 - [x] **0.4 Resolve the open prompt-format decision** (CLAUDE.md "Open decision"). Recommended: user prompt =
   `File: {path}\n<git_diff>\n{diff with line numbers}\n</git_diff>`, line numbers prepended to added/context lines in **new-file numbering** (e.g. `42| +code`), since the model's `line` output must map to GitHub inline comments. Record the choice in `docs/PROJECT_PLAN.md` §3.2 or `docs/experiments.md`.
 - [x] **0.5 Confirm `Severity` set** (`LOW|MEDIUM|HIGH`) with a rubric sentence the teacher will follow; update the `schema.py` comment.
@@ -23,17 +23,17 @@ Decisions made: teacher = Gemini Flash Lite (key via `.env`, model ID to verify)
 - (EOS / `apply_chat_template` verification belongs to M2; don't build it now.)
 
 ## Phase 2 — Raw diff curation (`src/data_pipeline/curate_dataset.py`, step 1)
-- [ ] **2.1 Load `bigcode/commitpackft` (Python subset)**, stream with `datasets`. Fields give `old_contents`/`new_contents`; build a unified diff with stdlib `difflib.unified_diff` (no new dependency).
-- [ ] **2.2 Load `CyberNative/Code_Vulnerability_Security_DPO`** (Python rows). It has vulnerable/fixed code, not diffs: build a diff by diffing *fixed → vulnerable* code so the added lines contain the bug. *Check the dataset card for column names first.*
-- [ ] **2.3 Filters**: Python only, diff 10–150 lines, fits ~2048 tokens with prompt (count with the Qwen tokenizer once, drop >~1,800), dedupe by hash, drop binary/generated/lockfile-like content.
-- [ ] **2.4 Over-sample candidates** (~2,500–3,000) because the teacher + balancing will discard many. Write `data/raw_diffs.jsonl` (`id, source, file_path, diff`). *Done when:* count/length histogram printed; spot-check 10 diffs by eye.
+- [x] **2.1 Load `bigcode/commitpackft` (Python subset)**, stream with `datasets`. Fields give `old_contents`/`new_contents`; build a unified diff with stdlib `difflib.unified_diff` (no new dependency).
+- [x] **2.2 Load `CyberNative/Code_Vulnerability_Security_DPO`** (Python rows). It has vulnerable/fixed code, not diffs: build a diff by diffing *fixed → vulnerable* code so the added lines contain the bug. *Check the dataset card for column names first.*
+- [x] **2.3 Filters**: Python only, diff 10–150 lines, fits ~2048 tokens with prompt (count with the Qwen tokenizer once, drop >~1,800), dedupe by hash, drop binary/generated/lockfile-like content.
+- [x] **2.4 Over-sample candidates** (~2,500–3,000) because the teacher + balancing will discard many. Write `data/raw_diffs.jsonl` (`id, source, file_path, diff`). *Done when:* count/length histogram printed; spot-check 10 diffs by eye.
 
 ## Phase 3 — Teacher labeling (`curate_dataset.py`, step 2)
-- [ ] **3.1 Labeling prompt**: rubric (4 categories only; ignore style/naming/docs; abstain if unsure; severity definitions; line numbers refer to the numbered diff). Send the diff through `format_chat.number_diff`.
-- [ ] **3.2 Structured output**: use Gemini's JSON-schema response mode with the Pydantic models from `src/schema.py` (import, don't redeclare; `pass` alias makes this fiddly, so a plain `response_mime_type="application/json"` + `PRReviewOutput.model_validate_json` is fine). Reject any label that fails validation.
-- [ ] **3.3 Robustness**: `temperature=0`, retry with backoff, **resume-safe** (append to `data/labeled.jsonl`, skip ids already done), env-var key only.
-- [ ] **3.4 Label sanity checks**: every `line` actually exists among the numbered diff lines; comment non-empty; drop violators. Hand-review ~30 labels (mix of defective/clean) and note teacher precision in `docs/experiments.md`.
-- [ ] **3.5 Balance to 60/40**: 900 defective / 600 clean total. Take clean from teacher-labeled `pass:true` (CommitPackFT mostly), defective from `pass:false`. Ensure all four categories are represented (report counts; no category <~10%, or note the gap). *Done when:* exactly 1,500 rows with printed class/category tables.
+- [x] **3.1 Labeling prompt**: rubric (4 categories only; ignore style/naming/docs; abstain if unsure; severity definitions; line numbers refer to the numbered diff). Send the diff through `format_chat.number_diff`.
+- [x] **3.2 Structured output**: use Gemini's JSON-schema response mode with the Pydantic models from `src/schema.py` (import, don't redeclare; `pass` alias makes this fiddly, so a plain `response_mime_type="application/json"` + `PRReviewOutput.model_validate_json` is fine). Reject any label that fails validation.
+- [x] **3.3 Robustness**: `temperature=0`, retry with backoff, **resume-safe** (append to `data/labeled.jsonl`, skip ids already done), env-var key only.
+- [ ] **3.4 Label sanity checks** *(checks coded in `check_label`; hand-review via `--step review` still to do)*: every `line` actually exists among the numbered diff lines; comment non-empty; drop violators. Hand-review ~30 labels (mix of defective/clean) and note teacher precision in `docs/experiments.md`.
+- [ ] **3.5 Balance to 60/40** *(coded as `--step balance`; needs the full labeling run)*: 900 defective / 600 clean total. Take clean from teacher-labeled `pass:true` (CommitPackFT mostly), defective from `pass:false`. Ensure all four categories are represented (report counts; no category <~10%, or note the gap). *Done when:* exactly 1,500 rows with printed class/category tables.
 
 ## Phase 4 — Split & publish
 - [ ] **4.1 Stratified split** 1,200/150/150 with `seed=42` (stratify on clean vs defective, ideally category too). Split **by source commit/file** so near-duplicates don't leak across splits.

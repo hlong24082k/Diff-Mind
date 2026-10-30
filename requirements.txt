@@ -6,5 +6,6 @@ datasets
 huggingface_hub
 llama-cpp-python
 google-genai
+tokenizers
 python-dotenv
 pytest
