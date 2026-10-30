@@ -30,11 +30,13 @@ def test_balance():
 
     def row(i, cat):
         rev = [{"line": 1, "category": cat, "severity": "LOW", "comment": "x"}] if cat else []
-        return {"id": i, "source": "s", "file_path": "f", "diff": "d", "label_json": json.dumps({"pass": not rev, "reviews": rev})}
+        return {"id": i, "source": "commitpackft", "file_path": "f", "diff": "d", "label_json": json.dumps({"pass": not rev, "reviews": rev})}
 
     rows = [row(f"s{i}", "SECURITY") for i in range(50)] + [row(f"b{i}", "BUG") for i in range(5)] + [row(f"c{i}", None) for i in range(10)]
+    rows += [{**row("cn0", None), "source": "cybernative"}, {**row("f0", None), "source": "commitpackft_fix"}]
     out = balance(rows, 20, 10, 42)
     assert sum(r["is_defective"] for r in out) == 20 and len(out) == 30
+    assert {r["source"] for r in out if not r["is_defective"]} == {"commitpackft"}  # clean only from forward real commits
     assert sum(r["category"] == "BUG" for r in out) == 5  # rare category fully kept, rest filled from SECURITY
 
 
@@ -64,3 +66,19 @@ def test_label_batch_rotates_keys_and_tolerates_missing_items():
         raise AssertionError("expected SystemExit")
     except SystemExit:
         pass
+
+
+def test_split_and_leakage():
+    import pytest
+
+    from src.data_pipeline.publish_dataset import check_leakage, split
+
+    rows = [{"id": f"cp-c{i}-x", "source": "commitpackft", "diff": f"d{i}", "is_defective": i % 5 < 3, "category": ("BUG" if i % 10 < 3 else "SECURITY") if i % 5 < 3 else None} for i in range(200)]
+    s = split(rows, 0.1, 42)
+    assert split(list(reversed(rows)), 0.1, 42) == s  # deterministic, independent of input order
+    assert (len(s["train"]), len(s["validation"]), len(s["test"])) == (160, 20, 20)
+    assert all(sum(r["is_defective"] for r in v) == 0.6 * len(v) for v in s.values())  # 60% defective in every split
+    check_leakage(s)
+    s["test"].append({**s["train"][0], "id": "cp-other-y"})  # same diff, other id
+    with pytest.raises(AssertionError):
+        check_leakage(s)

@@ -1,5 +1,6 @@
 """Dataset curation, run from the repo root as `python -m src.data_pipeline.curate_dataset --step X`:
   curate  candidate diffs            -> data/raw_diffs.jsonl   (default)
+  fixes   fix commits diffed fixed->buggy, appended to raw_diffs.jsonl (--target = how many; adds rare categories)
   label   Gemini teacher labels      -> data/labeled.jsonl     (resume-safe; 10 diffs/request; keys: GEMINI_API_KEYS=k1,k2 in .env)
   review  print 30 labels to eyeball (teacher precision goes in docs/experiments.md)
   balance 900 defective / 600 clean  -> data/balanced.jsonl"""
@@ -79,9 +80,9 @@ def iter_cybernative():
         yield f"cn-{i}", "cybernative", path, make_diff(_strip_fence(r["chosen"]), _strip_fence(r["rejected"]), path)
 
 
-def curate(target: int, seed: int) -> list[dict]:
+def make_filter(seen: set):
+    """Row filter shared by every candidate source: unique diff, 10-150 lines, <=1800 prompt tokens."""
     tok = Tokenizer.from_pretrained(TOKENIZER_ID)
-    seen, kept = set(), []
 
     def ok(row) -> bool:
         id_, _, path, diff = row
@@ -91,6 +92,13 @@ def curate(target: int, seed: int) -> list[dict]:
         n_tok = len(tok.encode("\n".join(m["content"] for m in build_messages(path, diff))).ids)
         seen.add(h)
         return n_tok <= MAX_TOKENS
+
+    return ok
+
+
+def curate(target: int, seed: int) -> list[dict]:
+    kept = []
+    ok = make_filter(set())
 
     # CyberNative is small (424 py rows) -> take every row that passes; CommitPackFT fills the rest.
     kept += [r for r in iter_cybernative() if ok(r)]
@@ -102,6 +110,48 @@ def curate(target: int, seed: int) -> list[dict]:
             kept.append(r)
     print(f"kept {len(kept)} ({n_cn} cybernative)")
     random.Random(seed).shuffle(kept)
+    return [dict(zip(("id", "source", "file_path", "diff"), r)) for r in kept]
+
+
+# Commit-message groups, rare categories first; the teacher still decides what is really defective.
+_FIX_GROUPS = {
+    "leak": r"\b(leaks?|leaking|unclosed|not closed|(forgot|forget|missing)\b.{0,20}\bclos\w*|clos(e|ing)\b.{0,20}\b(file|connection|socket|session|handle|cursor|stream)s?|file handles?|context manager)\b",
+    "perf": r"\b(perf(ormance)?|slow(er|ly)?|speed(s|ing)? ?up|faster|optimi[sz]\w*|n\+1|quadratic|too many (queries|requests)|memory usage)\b",
+    "sec": r"\b(secur\w*|vulnerab\w*|injection|sanitiz\w*|xss|csrf|traversal|hardcod\w*|insecure|unsafe|pickle|escap(e|es|ed|ing))\b",
+    "bug": r"\b(fix(es|ed)?|bug|crash\w*|regression)\b",
+}
+
+
+def curate_fixes(raw: str, target: int, seed: int) -> list[dict]:
+    """Real *fix* commits diffed fixed -> buggy (same trick as CyberNative), so the added lines hold the bug.
+    Adds the weak categories (PERFORMANCE / RESOURCE_LEAK) the first pass lacked. Skips anything already in `raw`,
+    including the forward diff of the same commit+file (it would sit in the other class and leak across splits)."""
+    have = read_jsonl(raw)
+    ids = {r["id"] for r in have}
+    ok = make_filter({hashlib.sha1(r["diff"].encode()).hexdigest() for r in have})
+    groups = {g: [] for g in _FIX_GROUPS}
+    ds = load_dataset("json", data_files=COMMITPACK, split="train", streaming=True)
+    for r in ds:
+        old, new, path = r["old_contents"] or "", r["new_contents"] or "", r["new_file"]
+        if not old or r["old_file"] != path or _BAD_PATH.search(path) or _GENERATED.search(new[:500]):
+            continue
+        if max(map(len, new.splitlines()), default=0) > 300:
+            continue
+        suffix = f"{r['commit'][:12]}-{hashlib.sha1(path.encode()).hexdigest()[:6]}"
+        g = next((g for g, p in _FIX_GROUPS.items() if re.search(p, r["message"] or "", re.I)), None)
+        if g and f"cp-{suffix}" not in ids:
+            groups[g].append((f"cpf-{suffix}", "commitpackft_fix", path, old, new))
+    rng, kept = random.Random(seed), []
+    for g, cands in groups.items():  # rare groups first, so `bug` only fills the remainder
+        rng.shuffle(cands)
+        n0 = len(kept)
+        for id_, src, path, old, new in cands:
+            if len(kept) >= target:
+                break
+            row = (id_, src, path, make_diff(new, old, path))  # fixed -> buggy
+            if ok(row):
+                kept.append(row)
+        print(f"  {g}: {len(cands)} candidates, kept {len(kept) - n0}")
     return [dict(zip(("id", "source", "file_path", "diff"), r)) for r in kept]
 
 
@@ -252,7 +302,9 @@ def primary_category(label_json: str) -> str | None:
 def balance(rows: list[dict], n_def: int, n_clean: int, seed: int) -> list[dict]:
     rows = [r for r in rows if r["label_json"]]
     rng = random.Random(seed)
-    clean = [r for r in rows if primary_category(r["label_json"]) is None]
+    # Teacher "clean" is only trusted on forward real commits: on CyberNative it passed obvious pickle/os.system
+    # exploits (5/7 reviewed), and reversed fix commits (`commitpackft_fix`) can hide bugs it missed (Phase 3.4).
+    clean = [r for r in rows if primary_category(r["label_json"]) is None and r["source"] == "commitpackft"]
     by_cat = collections.defaultdict(list)
     for r in rows:
         if (c := primary_category(r["label_json"])):
@@ -282,12 +334,14 @@ def balance_report(rows: list[dict]) -> None:
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--step", choices=["curate", "label", "review", "balance"], default="curate")
-    ap.add_argument("--target", type=int, default=2800, help="curate: over-sample, teacher + balancing discard many")
+    ap.add_argument("--step", choices=["curate", "fixes", "label", "review", "balance"], default="curate")
+    ap.add_argument("--target", type=int, default=2800, help="curate: over-sample (teacher + balancing discard many); fixes: how many to add")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--out", default="data/raw_diffs.jsonl", help="curate output")
     ap.add_argument("--model", default=TEACHER_MODEL, help="label: teacher model id")
     ap.add_argument("--limit", type=int, help="label: only the next N unlabeled diffs (cost estimate)")
+    ap.add_argument("--n-defective", type=int, default=900, help="balance: defective rows (plan: 900)")
+    ap.add_argument("--n-clean", type=int, default=600, help="balance: clean rows (plan: 600)")
     ap.add_argument("--batch", type=int, default=5, help="label: diffs per request")
     ap.add_argument("--workers", type=int, default=4, help="label: in-flight requests (>= rpm x latency/60)")
     ap.add_argument("--rpm", type=int, default=14, help="label: max requests/min (free-tier cap ~15; 1 under for safety)")
@@ -299,12 +353,17 @@ if __name__ == "__main__":
         Path(a.out).write_text("".join(json.dumps(r) + "\n" for r in rows))
         report(rows)
         print("wrote", a.out)
+    elif a.step == "fixes":
+        new = curate_fixes(a.out, a.target, a.seed)
+        with open(a.out, "a") as f:
+            f.write("".join(json.dumps(r) + "\n" for r in new))
+        print("appended", len(new), "fix-commit diffs to", a.out, "- now run --step label")
     elif a.step == "label":
         label("data/raw_diffs.jsonl", "data/labeled.jsonl", a.model, a.limit, a.rpm, a.workers, a.batch)
     elif a.step == "review":
         review("data/labeled.jsonl", a.seed)
     else:
-        rows = balance(read_jsonl("data/labeled.jsonl"), 900, 600, a.seed)
+        rows = balance(read_jsonl("data/labeled.jsonl"), a.n_defective, a.n_clean, a.seed)
         Path("data/balanced.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
         balance_report(rows)
         print("wrote data/balanced.jsonl:", len(rows), "rows")

@@ -8,4 +8,5 @@ llama-cpp-python
 google-genai
 tokenizers
 python-dotenv
+matplotlib
 pytest

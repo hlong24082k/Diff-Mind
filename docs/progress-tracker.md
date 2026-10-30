@@ -24,6 +24,10 @@ change.
 - M1 Phase 0.2/0.3: keys work; teacher model `gemini-3.5-flash-lite` verified via `models.list()` (2026-10-28), pinned as `TEACHER_MODEL` (override with `--model`).
 - M1 Phase 3 (code): `curate_dataset.py --step label|review|balance`. Smoke test on 5 diffs: 5/5 valid, ~540 input / ~20 output tokens per diff. Full run NOT done yet. Free-tier cap ~15 req/min and calls take 5-17 s, so labeling uses a shared rate limiter (`--rpm 14`) with `--workers 6`; 30-diff test (4 workers) took 3 min (~10/min) -> full run of ~2,750 remaining diffs ~3.5-4.5 h, resume-safe, stops cleanly on a daily-quota error (`PerDay`). Tests added for `check_label` and `balance`.
 - M1 Phase 3 labeling v2: 10 diffs per request (`--batch`) and API-key rotation (`GEMINI_API_KEYS=k1,k2,...` in `.env`, falls back to `GEMINI_API_KEY`; a key is dropped on a `PerDay` 429). Free tier is 500 requests/day/key/model, so one key covers the remaining ~2,300 diffs (~230 requests, ~17 min at 14 req/min). Tests cover rotation and missing batch items. Not yet run live (key's daily quota was used up by the single-diff run; resets ~6 h later).
+- M1 Phase 3.4: all 2,800 diffs labeled (2,793 valid). 30-label review done (findings in `docs/experiments.md` "Dataset notes"). `balance` now never uses CyberNative `pass:true` as clean and takes `--n-defective/--n-clean`.
+- M1 Phase 3.5 prep: `--step fixes --target 1200` appended 1,200 reversed fix-commit diffs (`source: commitpackft_fix`: 61 leak, 177 perf, 200 security, 762 bug keyword groups) to `data/raw_diffs.jsonl` to fill the defective/PERFORMANCE/RESOURCE_LEAK shortfall. 200 labeled so far, **1,000 still unlabeled** (owner will run `--step label`), then `--step balance`.
+- M1 Phase 3.5: `data/balanced.jsonl` written, 1,335 rows (801 defective / 534 clean, 60/40). Short of 1,500 and the category floor (PERFORMANCE 8, RESOURCE_LEAK 43); details in `docs/experiments.md`. Phase 3 complete. Clean pool = forward `commitpackft` only.
+- M1 dataset analysis: `python -m src.data_pipeline.analyze_dataset` writes 7 charts + `data_tables.md` (numbers behind each chart) to `docs/figures/`. `matplotlib` added to `requirements.txt`.
 
 ## In Progress
 
@@ -31,9 +35,13 @@ change.
 
 - Phase 1: `number_diff` and `build_messages` in `src/data_pipeline/format_chat.py`; tests in `tests/test_format_chat.py` (`pytest`, added to requirements).
 
+## Done (recent)
+
+- Phase 4.1-4.3, 4.5: `src/data_pipeline/publish_dataset.py` (split 1,071/132/132, leakage check, dataset columns, test hash); test in `tests/test_curate_dataset.py`.
+
 ## Next Up
 
-- Phase 3 run: `label --limit 50` (cost), full `label`, `review` (log teacher precision in `docs/experiments.md`), `balance` -> `data/balanced.jsonl`. Then Phase 4 (split + publish).
+- Phase 4.4: push `data/dataset/` to the HF Hub (`.env` `HF_TOKEN` is read-only; needs a write token): `python -m src.data_pipeline.publish_dataset --push HLeon/pr-review-high-signal`, then record the revision in `docs/experiments.md` and set `dataset:` in `configs/qlora_config.yaml`. Then Phase 5 (evaluation harness).
 
 ## Open Questions
 

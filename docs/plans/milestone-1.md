@@ -32,15 +32,15 @@ Decisions made: teacher = Gemini Flash Lite (key via `.env`, model ID to verify)
 - [x] **3.1 Labeling prompt**: rubric (4 categories only; ignore style/naming/docs; abstain if unsure; severity definitions; line numbers refer to the numbered diff). Send the diff through `format_chat.number_diff`.
 - [x] **3.2 Structured output**: use Gemini's JSON-schema response mode with the Pydantic models from `src/schema.py` (import, don't redeclare; `pass` alias makes this fiddly, so a plain `response_mime_type="application/json"` + `PRReviewOutput.model_validate_json` is fine). Reject any label that fails validation.
 - [x] **3.3 Robustness**: `temperature=0`, retry with backoff, **resume-safe** (append to `data/labeled.jsonl`, skip ids already done), env-var key only.
-- [ ] **3.4 Label sanity checks** *(checks coded in `check_label`; hand-review via `--step review` still to do)*: every `line` actually exists among the numbered diff lines; comment non-empty; drop violators. Hand-review ~30 labels (mix of defective/clean) and note teacher precision in `docs/experiments.md`.
-- [ ] **3.5 Balance to 60/40** *(coded as `--step balance`; needs the full labeling run)*: 900 defective / 600 clean total. Take clean from teacher-labeled `pass:true` (CommitPackFT mostly), defective from `pass:false`. Ensure all four categories are represented (report counts; no category <~10%, or note the gap). *Done when:* exactly 1,500 rows with printed class/category tables.
+- [x] **3.4 Label sanity checks** *(`check_label` + 30-label review by Claude, findings in `docs/experiments.md`; owner re-check optional)*: every `line` actually exists among the numbered diff lines; comment non-empty; drop violators. Hand-review ~30 labels (mix of defective/clean) and note teacher precision in `docs/experiments.md`.
+- [x] **3.5 Balance to 60/40** *(DEVIATION: 1,335 rows = 801 defective / 534 clean, not 1,500; PERFORMANCE 1%, RESOURCE_LEAK 5% - see experiments.md)*: 900 defective / 600 clean total. Take clean from teacher-labeled `pass:true` (CommitPackFT mostly), defective from `pass:false`. Ensure all four categories are represented (report counts; no category <~10%, or note the gap). *Done when:* exactly 1,500 rows with printed class/category tables.
 
 ## Phase 4 — Split & publish
-- [ ] **4.1 Stratified split** 1,200/150/150 with `seed=42` (stratify on clean vs defective, ideally category too). Split **by source commit/file** so near-duplicates don't leak across splits.
-- [ ] **4.2 Leakage check**: assert no overlapping ids/diff hashes between splits.
-- [ ] **4.3 Dataset schema**: columns `id, file_path, diff, messages (system+user), label_json, is_defective, category`. Store the *teacher label as the exact JSON string* the model must emit (key order `pass`, `reviews`).
-- [ ] **4.4 Push to HF Hub** `<username>/pr-review-high-signal` as a `DatasetDict` (train/validation/test); note the commit SHA as the dataset revision. Never overwrite later; new data = new revision/tag. Update `configs/qlora_config.yaml` `dataset:` with the real repo id.
-- [ ] **4.5 Freeze the test set**: record test-split hash in `docs/experiments.md`.
+- [x] **4.1 Stratified split** *(`publish_dataset.py`; 1,335 rows -> 1,071/132/132, stratified on defective x category; no commit appears twice in `balanced.jsonl`, so by-row == by-commit)* 1,200/150/150 with `seed=42` (stratify on clean vs defective, ideally category too). Split **by source commit/file** so near-duplicates don't leak across splits.
+- [x] **4.2 Leakage check**: assert no overlapping ids/diff hashes between splits.
+- [x] **4.3 Dataset schema** *(+ `source` column, kept for the CyberNative source-effect check)*: columns `id, file_path, diff, messages (system+user), label_json, is_defective, category`. Store the *teacher label as the exact JSON string* the model must emit (key order `pass`, `reviews`).
+- [ ] **4.4 Push to HF Hub** *(BLOCKED: `.env` `HF_TOKEN` is read-only -> 403 on repo create; needs a write token, then `--push HLeon/pr-review-high-signal`)* `<username>/pr-review-high-signal` as a `DatasetDict` (train/validation/test); note the commit SHA as the dataset revision. Never overwrite later; new data = new revision/tag. Update `configs/qlora_config.yaml` `dataset:` with the real repo id.
+- [x] **4.5 Freeze the test set**: record test-split hash in `docs/experiments.md`.
 - [ ] **4.6 (optional)** `notebooks/01_dataset_curation.ipynb`: thin wrapper that calls the script and shows distributions.
 
 ## Phase 5 — Evaluation harness (`src/evaluation/evaluate.py`)
