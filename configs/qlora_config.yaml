@@ -1,6 +1,9 @@
 # Source: PROJECT_PLAN.md Milestone 2. Change values per experiment; log the run in docs/experiments.md.
-base_model: Qwen/Qwen2.5-Coder-3B-Instruct
-dataset: <your-username>/pr-review-high-signal
+dataset: HLeon/diff-mind-pr-review-high-signal
+dataset_revision: "613e5bbfb6aab9b57129d7e0ca936de6c5825bc4"
+hub_model_id: HLeon/diff-mind-qwen2.5-coder-3b-lora
+wandb_project: diff-mind
+run_name: v1
 max_seq_length: 2048
 
 quant:
@@ -24,6 +27,8 @@ train:
   lr_scheduler_type: cosine
   num_train_epochs: 3
   eval_steps: 25
-  save_steps: 50
+  save_steps: 25        # was 50; must equal eval_steps
+  warmup_steps: 10
+  logging_steps: 5
   push_to_hub: true
   seed: 42

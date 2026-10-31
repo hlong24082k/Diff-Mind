@@ -42,7 +42,7 @@ Added 1,200 reversed CommitPackFT fix commits (`commitpackft_fix`: fixed -> bugg
 `python -m src.data_pipeline.publish_dataset` splits `data/balanced.jsonl` (seed 42, stratified on defective x category, ~10% each for validation/test) -> **train 1,071 / validation 132 / test 132**, 60% defective in each. Local copy in `data/dataset/*.jsonl` (gitignored). Leakage check (id, diff hash, source commit) passes.
 - Test categories: BUG 40, SECURITY 34, RESOURCE_LEAK 4, PERFORMANCE 1, clean 53. **Per-category F1 on PERFORMANCE (1 example) and RESOURCE_LEAK (4) is noise**; report them as counts, not as a metric.
 - **Frozen test set sha256:** `cbd859afbc8102fa566349d2563f303c7c282c35911029b4ccd423f307e41cda` (over sorted id, diff, label_json). Recompute with the script; a different value means the test set changed and old results are not comparable.
-- HF Hub revision: _not published yet_ (token is read-only). Fill in once pushed.
+- HF Hub revision: 613e5bbfb6aab9b57129d7e0ca936de6c5825bc4 (repo HLeon/diff-mind-pr-review-high-signal). Fill in once pushed.
 
 ### Baseline report (M1 Phase 6, 2026-10-30)
 Untuned Qwen2.5-Coder-3B-Instruct, Q4_K_M GGUF via llama-cpp-python, greedy, `max_tokens` 512, seed 42, full test split (**132** examples: 79 defective / 53 clean, not the 150 in the plan). Smoke test (10 validation rows) showed the same 0-shot failure and no output near the token cap, so settings were left alone; nothing was tuned on test. 2-shot shots are the shortest defective + shortest clean train diffs (`cpf-4ca25c413494-b7764a`, `cp-5eb765ee3ad9-6defec`). Runs were made with `git_commit` `0a51c64+dirty`; the only uncommitted change was the `requirements.txt` version pin, no code differed.
