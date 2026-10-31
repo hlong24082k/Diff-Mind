@@ -5,7 +5,7 @@ change.
 
 ## Current Phase
 
-- Milestone 2 (QLoRA Training, Kaggle T4): planned 2026-10-31, not started. To-do list: `docs/plans/milestone-2.md` (10 decisions from the grilling session at its top). First step: HF write token + dataset push (M1 4.4 = M2 0.1).
+- Milestone 2 (QLoRA Training, Kaggle T4): Phase 0 done (2026-10-31): dataset pushed to `HLeon/diff-mind-pr-review-high-signal` @ `613e5bbf…` (closes M1 4.4), Kaggle secrets set, `configs/qlora_config.yaml` updated (pinned revision, `save_steps` 25, `warmup_steps` 10 as a plan deviation). Next: Phase 1 (`to_chat()` + test). To-do list: `docs/plans/milestone-2.md`.
 - Milestone 1 (Dataset Engineering & Baseline Harness): Phases 0–3, 5, 6 done; Phase 4 done except 4.4 (HF push, needs a write token). Detailed to-do list: `docs/plans/milestone-1.md`.
 
 ## Current Goal
