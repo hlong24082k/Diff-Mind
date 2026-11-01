@@ -1,7 +1,9 @@
 """M2 QLoRA training. Heavy imports (unsloth/torch/trl/datasets) go inside main() so this module
 imports on the Mac venv for tests."""
 import argparse
+import json
 import os
+import subprocess
 import sys
 
 from src.data_pipeline.format_chat import build_messages
@@ -126,7 +128,7 @@ def main() -> None:
             logging_steps=t["logging_steps"],
             report_to="wandb",
             run_name=run_name,
-            push_to_hub=t["push_to_hub"],
+            push_to_hub=t["push_to_hub"] and args.max_steps < 0,  # smoke runs stay off the Hub
             hub_model_id=cfg["hub_model_id"],
             hub_strategy="checkpoint",
             hub_private_repo=True,
@@ -147,6 +149,69 @@ def main() -> None:
     if args.check:
         check(trainer, tok, ds, cfg["max_seq_length"])
         sys.exit(0)
+
+    trainer.train()
+    vram = torch.cuda.max_memory_reserved() / 2**30
+    print(f"peak VRAM reserved: {vram:.2f} GiB")
+
+    # load_best_model_at_end means the in-memory model is the best checkpoint. Push before sanity so a
+    # sanity crash cannot lose it. The smoke run (--max-steps) never pushes.
+    adapter_sha = None
+    if args.max_steps < 0:
+        trainer.push_to_hub()
+        from huggingface_hub import HfApi
+
+        adapter_sha = HfApi().model_info(cfg["hub_model_id"]).sha
+        print(f"adapter pushed: {cfg['hub_model_id']} @ {adapter_sha}")
+
+    import wandb
+
+    summary = {
+        "run_name": run_name,
+        "git_commit": subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip(),
+        "dataset_revision": cfg["dataset_revision"],
+        "wandb_url": wandb.run.url if wandb.run else None,
+        "best_checkpoint": trainer.state.best_model_checkpoint,
+        "best_eval_loss": trainer.state.best_metric,
+        "peak_vram_gib": round(vram, 2),
+        "adapter_hub_sha": adapter_sha,
+    }
+    with open(f"{OUT_DIR}/train_summary.json", "w") as f:
+        json.dump(summary, f, indent=2)
+    print(summary)
+
+    # The first validation rows are all defective, so take 5 clean + 5 defective to also exercise abstention.
+    val = ds["validation"]
+    sanity(model, tok, [r for r in val if not r["is_defective"]][:5] + [r for r in val if r["is_defective"]][:5])
+
+
+def sanity(model, tok, rows) -> None:
+    """Greedy-generate on validation rows: does it stop by itself and emit schema-valid JSON? Not a metric (M3 does test)."""
+    from unsloth import FastLanguageModel
+
+    from src.schema import PRReviewOutput
+
+    FastLanguageModel.for_inference(model)
+    results = []
+    for r in rows:
+        prompt = tok.apply_chat_template(
+            build_messages(r["file_path"], r["diff"]), tokenize=False, add_generation_prompt=True
+        )
+        inputs = tok(prompt, return_tensors="pt").to("cuda")
+        out = model.generate(**inputs, max_new_tokens=512, do_sample=False)
+        text = tok.decode(out[0, inputs["input_ids"].shape[1]:], skip_special_tokens=False)
+        stopped = text.endswith("<|im_end|>")  # stopped by itself, not at the 512 cap
+        try:
+            PRReviewOutput.model_validate_json(text.removesuffix("<|im_end|>"))
+            valid = True
+        except ValueError:  # pydantic ValidationError subclasses ValueError
+            valid = False
+        results.append({"id": r["id"], "stopped": stopped, "valid": valid, "output": text})
+        print(f"{r['id']}: stopped={stopped} valid={valid}")
+    n = len(results)
+    print(f"stopped {sum(x['stopped'] for x in results)}/{n}, valid {sum(x['valid'] for x in results)}/{n}")
+    with open(f"{OUT_DIR}/sanity.jsonl", "w") as f:
+        f.writelines(json.dumps(x) + "\n" for x in results)
 
 
 if __name__ == "__main__":
