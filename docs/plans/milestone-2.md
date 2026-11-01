@@ -29,9 +29,9 @@ Fine-tune `Qwen/Qwen2.5-Coder-3B-Instruct` with QLoRA on the M1 dataset (train 1
 
 ## Phase 1 — Example → chat (local, testable on the Mac)
 *Why first:* if the training text differs from what `evaluate.py` / `review_pr.py` send, the model learns one prompt and is served another (train/serve skew). This is the cheapest bug to catch locally.
-- [ ] **1.1 `to_chat(example) -> list[dict]`** in `train_qlora.py`: `build_messages(example["file_path"], example["diff"]) + [{"role": "assistant", "content": example["label_json"]}]`. Rebuild from `build_messages` (the single source) instead of trusting the stored `messages` column.
-- [ ] **1.2 Keep module imports light**: top of file imports only stdlib + `src.data_pipeline.format_chat`; `unsloth`/`torch`/`trl`/`datasets` imported inside `main()`. *Why:* the local venv has no torch/unsloth and the test must import the module.
-- [ ] **1.3 Test `tests/test_train_qlora.py`** (2 asserts on 1-2 rows of `data/dataset/train.jsonl`): (a) `to_chat(ex)[:2] == ex["messages"]` (stored prompt == current formatter → catches a stale dataset), (b) last turn is `assistant` with content exactly `label_json` and `json.loads` works. *Done when:* `python -m pytest` passes.
+- [x] **1.1 `to_chat(example) -> list[dict]`** in `train_qlora.py`: `build_messages(example["file_path"], example["diff"]) + [{"role": "assistant", "content": example["label_json"]}]`. Rebuild from `build_messages` (the single source) instead of trusting the stored `messages` column.
+- [x] **1.2 Keep module imports light**: top of file imports only stdlib + `src.data_pipeline.format_chat`; `unsloth`/`torch`/`trl`/`datasets` imported inside `main()`. *Why:* the local venv has no torch/unsloth and the test must import the module.
+- [x] **1.3 Test `tests/test_train_qlora.py`** (2 asserts on 1-2 rows of `data/dataset/train.jsonl`): (a) `to_chat(ex)[:2] == ex["messages"]` (stored prompt == current formatter → catches a stale dataset), (b) last turn is `assistant` with content exactly `label_json` and `json.loads` works. *Done when:* `python -m pytest` passes.
 
 ## Phase 2 — Model + LoRA load (`train_qlora.py main()`, runs on Kaggle)
 - [ ] **2.1 CLI**: `--config` (default the yaml), `--check`, `--max-steps` (default -1 = use epochs), `--run-name` (override). Read yaml with `yaml.safe_load`; nothing else configurable.
