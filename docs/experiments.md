@@ -16,7 +16,7 @@ One row per run. Never edit past rows; add a new one. Goal: every model is repro
 | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- |
 | base-0shot | 2026-10-30 | Qwen2.5-Coder-3B-Instruct (Q4_K_M GGUF) | local test sha256 `cbd859af…1cda` (HF not pushed) | `0a51c64`, `outputs/base-0shot/` | — | 0.0% (0/132) | 0.0%* | 0.0%* | 0.000 | M1 baseline. Every output is fenced and uses the wrong schema; see baseline report. *Invalid = not flagged, so FP/recall are vacuous. |
 | base-2shot | 2026-10-30 | Qwen2.5-Coder-3B-Instruct (Q4_K_M GGUF) | local test sha256 `cbd859af…1cda` (HF not pushed) | `0a51c64`, `outputs/base-2shot/` | — | 95.5% (126/132) | 49.1% (26/53) | 72.2% (57/79) | 0.375 | M1 baseline. Recall inflated by CyberNative (35/35); commit-only recall 22/44 = 50%. Hypothesis for v1: fine-tune to cut FP on clean commits. |
-| v1 | | Qwen2.5-Coder-3B-Instruct | | | | | | | | |
+| v1 | 2026-11-01 | Qwen2.5-Coder-3B-Instruct (QLoRA r16/α32, Kaggle T4) | `613e5bbf…` (1,071/132/132) | `configs/qlora_config.yaml` @ `6bf9ad6`; adapter `HLeon/diff-mind-qwen2.5-coder-3b-lora` @ `a32dbbb5…` | [ucuukj2r](https://wandb.ai/hlong-24082k/diff-mind/runs/ucuukj2r) | — (M3) | — (M3) | — (M3) | — (M3) | Trained, not yet evaluated. Best `eval_loss` 0.3984 at step 125 (epoch 1.87); adapter on the Hub is that checkpoint. See "v1 training notes". |
 
 ## Dataset notes
 
@@ -64,6 +64,14 @@ Untuned Qwen2.5-Coder-3B-Instruct, Q4_K_M GGUF via llama-cpp-python, greedy, `ma
 4. (Smaller) **Malformed JSON even with examples: 6/132 invalid.** 3 truncated at the 512-token cap (long run-on outputs), 3 with unescaped quotes/backslashes inside `comment` strings. Raising `max_tokens` would fix the first kind only; left unchanged so M3 compares at the same setting.
 
 **Caveats:** no HF revision yet (4.4 blocked); `llama-cpp-python` 0.3.36 chat template is the GGUF's own, not HF's `apply_chat_template` (verify for M2/M3 parity). Single seed/greedy: 132 examples gives roughly ±8pt 95% intervals on the rates.
+
+### v1 training notes (M2, 2026-11-01)
+3 epochs = 201 steps, effective batch 16 (4 x 4), lr 2e-4 cosine, warmup 10 steps (plan deviation: the plan names none), fp16, `paged_adamw_8bit`, completion-only loss. Train set is 1,071 rows, not the 1,200 in the plan.
+- **eval_loss by step:** 25 0.450, 50 0.418, 75 0.400, 100 0.409, **125 0.3984**, 150 0.447, 175 0.452, 200 0.454. `train_loss` keeps falling (0.34 at step 125 -> ~0.2 by step 185), so v1 overfits after ~epoch 2. `load_best_model_at_end` kept step 125; the Hub adapter's root `adapter_model.safetensors` differs from `last-checkpoint/` (step 201), confirming the best weights were pushed. **v2 idea:** 2 epochs, or lower lr, instead of more data first.
+- **Peak VRAM 3.21 GiB** (limit 14.5): plenty of headroom, the bs 2 x ga 8 fallback was not needed.
+- **Sanity (10 validation rows, 5 clean + 5 defective, greedy):** stopped by itself 10/10, schema-valid 10/10 (read from the Kaggle cell 6b output; the local `outputs/v1/sanity.jsonl` is still the smoke-run copy, where the model flagged every CyberNative row as `BUG` and 1 row was invalid, so don't read it as v1). Not a metric; this only says masking/EOS work. Real numbers come from M3 on test.
+- **Hub clutter:** the repo root also has `train_summary.json` and `sanity.jsonl` from the **smoke run** (`run_name: v1-smoke`; they were left in `outputs/v1/` and uploaded with the full push). Ignore or delete them; the real files are in the Kaggle output. Next time `rm` them before the full run, as the notebook already does for `checkpoint-*`.
+- **Versions (pinned in notebook cell 2):** unsloth + unsloth_zoo 2026.10.11, trl 1.15.0, peft 0.20.0, transformers 5.16.1, bitsandbytes 0.50.2, accelerate 1.14.0, torch 2.11.0+cu128 (Kaggle preinstalled, not pinned).
 
 ## Promoted model
 Track the single model currently used in production (HF repo + revision + GGUF filename) here.

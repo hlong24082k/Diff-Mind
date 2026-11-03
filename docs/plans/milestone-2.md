@@ -34,17 +34,17 @@ Fine-tune `Qwen/Qwen2.5-Coder-3B-Instruct` with QLoRA on the M1 dataset (train 1
 - [x] **1.3 Test `tests/test_train_qlora.py`** (2 asserts on 1-2 rows of `data/dataset/train.jsonl`): (a) `to_chat(ex)[:2] == ex["messages"]` (stored prompt == current formatter → catches a stale dataset), (b) last turn is `assistant` with content exactly `label_json` and `json.loads` works. *Done when:* `python -m pytest` passes.
 
 ## Phase 2 — Model + LoRA load (`train_qlora.py main()`, runs on Kaggle)
-- [ ] **2.1 CLI**: `--config` (default the yaml), `--check`, `--max-steps` (default -1 = use epochs), `--run-name` (override). Read yaml with `yaml.safe_load`; nothing else configurable.
-- [ ] **2.2 Load 4-bit base**: `FastLanguageModel.from_pretrained(model_name=cfg["base_model"], max_seq_length=2048, dtype=torch.float16, load_in_4bit=True)`. Unsloth applies bitsandbytes **nf4 + double quant** internally, which is what the plan asks for; the yaml `quant:` block documents it, so don't build a `BitsAndBytesConfig` yourself.
-- [ ] **2.3 Attach LoRA**: `FastLanguageModel.get_peft_model(model, r=16, lora_alpha=32, lora_dropout=0, target_modules=[...7 proj...], use_gradient_checkpointing="unsloth", random_state=42)`. Print `model.print_trainable_parameters()` (expect roughly 30M trainable, ~1% of params).
+- [x] **2.1 CLI**: `--config` (default the yaml), `--check`, `--max-steps` (default -1 = use epochs), `--run-name` (override). Read yaml with `yaml.safe_load`; nothing else configurable.
+- [x] **2.2 Load 4-bit base**: `FastLanguageModel.from_pretrained(model_name=cfg["base_model"], max_seq_length=2048, dtype=torch.float16, load_in_4bit=True)`. Unsloth applies bitsandbytes **nf4 + double quant** internally, which is what the plan asks for; the yaml `quant:` block documents it, so don't build a `BitsAndBytesConfig` yourself.
+- [x] **2.3 Attach LoRA**: `FastLanguageModel.get_peft_model(model, r=16, lora_alpha=32, lora_dropout=0, target_modules=[...7 proj...], use_gradient_checkpointing="unsloth", random_state=42)`. Print `model.print_trainable_parameters()` (expect roughly 30M trainable, ~1% of params).
   *ML note:* the update is scaled by `alpha/r = 2`. All 7 linear layers (attention + MLP) are targeted because format/behaviour changes need MLP capacity, not just attention.
-- [ ] **2.4 Build text column**: `ds = load_dataset(cfg["dataset"], revision=cfg["dataset_revision"])`, then `.map(lambda ex: {"text": tok.apply_chat_template(to_chat(ex), tokenize=False)})`. No `add_generation_prompt` here, because the assistant turn is already included.
-- [ ] **2.5 Pad ≠ EOS check**: assert `tok.eos_token == "<|im_end|>"` and `tok.pad_token != tok.eos_token` (Qwen pads with `<|endoftext|>`). *Why:* if pad == eos, padding-masking logic can also mask the real EOS, and the model never learns to stop. Set `tok.pad_token` explicitly if it's missing.
+- [x] **2.4 Build text column**: `ds = load_dataset(cfg["dataset"], revision=cfg["dataset_revision"])`, then `.map(lambda ex: {"text": tok.apply_chat_template(to_chat(ex), tokenize=False)})`. No `add_generation_prompt` here, because the assistant turn is already included.
+- [x] **2.5 Pad ≠ EOS check**: assert `tok.eos_token == "<|im_end|>"` and `tok.pad_token != tok.eos_token` (Qwen pads with `<|endoftext|>`). *Why:* if pad == eos, padding-masking logic can also mask the real EOS, and the model never learns to stop. Set `tok.pad_token` explicitly if it's missing.
 
 ## Phase 3 — Completion-only masking & `--check`
 *Why completion-only:* the prompt is ~90% of the tokens. Training on it would spend the gradient on reproducing diffs instead of learning the JSON answer. Only the assistant JSON + `<|im_end|>` should carry loss.
-- [ ] **3.1 Create the `SFTTrainer`** (Phase 4.1 config), then wrap it: `trainer = train_on_responses_only(trainer, instruction_part="<|im_start|>user\n", response_part="<|im_start|>assistant\n")`.
-- [ ] **3.2 `--check` mode** (after 3.1, before `train()`): take `trainer.train_dataset[0]`, then:
+- [x] **3.1 Create the `SFTTrainer`** (Phase 4.1 config), then wrap it: `trainer = train_on_responses_only(trainer, instruction_part="<|im_start|>user\n", response_part="<|im_start|>assistant\n")`.
+- [x] **3.2 `--check` mode** (after 3.1, before `train()`): take `trainer.train_dataset[0]`, then:
   - decode `input_ids` where `labels != -100` → assert it starts with `{"pass"` and ends with `<|im_end|>` (a trailing `\n` after it is fine), and that it equals the row's `label_json` + `<|im_end|>` (± that newline);
   - assert the count of active labels is much smaller than the sequence length (print both);
   - print the full `text` of one example once, so you can eyeball the template (system / user / assistant blocks). Save it to `outputs/v1/rendered_example.txt` for M3 to diff against the GGUF chat template (M1 caveat: llama-cpp uses the GGUF's own template).
@@ -53,9 +53,9 @@ Fine-tune `Qwen/Qwen2.5-Coder-3B-Instruct` with QLoRA on the M1 dataset (train 1
 - (Library check: TRL renamed some `SFTConfig` args across versions, e.g. `max_seq_length` → `max_length`. Read the error and match the installed version rather than guessing.)
 
 ## Phase 4 — Trainer config & runs
-- [ ] **4.1 `SFTConfig`** from the yaml: `per_device_train_batch_size=4`, `gradient_accumulation_steps=4`, `num_train_epochs=3`, `max_steps=args.max_steps`, `learning_rate=2e-4`, `lr_scheduler_type="cosine"`, `warmup_steps=10`, `optim="paged_adamw_8bit"`, `fp16=True`, `bf16=False`, `eval_strategy="steps"`, `eval_steps=25`, `save_steps=25`, `save_total_limit=2`, `load_best_model_at_end=True`, `metric_for_best_model="eval_loss"`, `greater_is_better=False`, `logging_steps=5`, `report_to="wandb"`, `run_name`, `push_to_hub=True`, `hub_model_id`, `hub_strategy="checkpoint"`, `hub_private_repo=True`, `dataset_text_field="text"`, `packing=False`, `seed=42`, `output_dir="outputs/v1"`.
+- [x] **4.1 `SFTConfig`** from the yaml: `per_device_train_batch_size=4`, `gradient_accumulation_steps=4`, `num_train_epochs=3`, `max_steps=args.max_steps`, `learning_rate=2e-4`, `lr_scheduler_type="cosine"`, `warmup_steps=10`, `optim="paged_adamw_8bit"`, `fp16=True`, `bf16=False`, `eval_strategy="steps"`, `eval_steps=25`, `save_steps=25`, `save_total_limit=2`, `load_best_model_at_end=True`, `metric_for_best_model="eval_loss"`, `greater_is_better=False`, `logging_steps=5`, `report_to="wandb"`, `run_name`, `push_to_hub=True`, `hub_model_id`, `hub_strategy="checkpoint"`, `hub_private_repo=True`, `dataset_text_field="text"`, `packing=False`, `seed=42`, `output_dir="outputs/v1"`.
   *ML notes:* `fp16` because T4 has no bf16 hardware. `paged_adamw_8bit` keeps optimizer state small and pages it to CPU on memory spikes. `2e-4` is the usual LoRA lr (only the small adapter moves, so it can be ~10x a full fine-tune lr). With `load_best_model_at_end`, the best checkpoint is always kept even with `save_total_limit=2`.
-- [ ] **4.2 Notebook `02_qlora_training.ipynb`** (5-6 cells, no logic):
+- [x] **4.2 Notebook `02_qlora_training.ipynb`** (5-6 cells, no logic):
   1. `!git clone https://github.com/hlong24082k/Diff-Mind && cd Diff-Mind && git checkout <commit>`
   2. `!pip install -q unsloth` (pulls trl/peft/bitsandbytes; wandb is preinstalled on Kaggle) + `pip install pyyaml pydantic` if missing
   3. secrets → `os.environ["HF_TOKEN"]`, `os.environ["WANDB_API_KEY"]`, `os.environ["CUDA_VISIBLE_DEVICES"]="0"` (set **before** importing torch)
@@ -63,20 +63,20 @@ Fine-tune `Qwen/Qwen2.5-Coder-3B-Instruct` with QLoRA on the M1 dataset (train 1
   5. `!python -m src.training.train_qlora --max-steps 10 --run-name v1-smoke`
   6. `!python -m src.training.train_qlora`
   + a last cell: `!pip freeze | grep -iE "unsloth|trl|peft|transformers|bitsandbytes|torch|accelerate" > outputs/v1/versions.txt`
-- [ ] **4.3 Peak VRAM print** in the script after `train()`: `torch.cuda.max_memory_reserved() / 2**30`, printed and written to `outputs/v1/train_summary.json` (with `git_commit`, `dataset_revision`, W&B URL `wandb.run.url`, best checkpoint, best eval_loss).
-- [ ] **4.4 Smoke run** (`--max-steps 10`). *Done when:* loss is logged and finite, W&B shows the run, peak VRAM < 14.5 GB. If OOM → switch to bs 2 × ga 8 in the yaml (same effective batch) and note it. Delete the smoke run's Hub pushes, or point it at a scratch `hub_model_id`.
-- [ ] **4.5 Full run `v1`** (~200 steps). Watch W&B: `train_loss` and `eval_loss` both fall; `eval_loss` flattening or rising while `train_loss` keeps falling = overfitting (expected near epoch 3; keep-best handles it). Record the step where `eval_loss` bottoms out.
+- [x] **4.3 Peak VRAM print** in the script after `train()`: `torch.cuda.max_memory_reserved() / 2**30`, printed and written to `outputs/v1/train_summary.json` (with `git_commit`, `dataset_revision`, W&B URL `wandb.run.url`, best checkpoint, best eval_loss).
+- [x] **4.4 Smoke run** (`--max-steps 10`). *Done when:* loss is logged and finite, W&B shows the run, peak VRAM < 14.5 GB. If OOM → switch to bs 2 × ga 8 in the yaml (same effective batch) and note it. Delete the smoke run's Hub pushes, or point it at a scratch `hub_model_id`.
+- [x] **4.5 Full run `v1`** (~200 steps). Watch W&B: `train_loss` and `eval_loss` both fall; `eval_loss` flattening or rising while `train_loss` keeps falling = overfitting (expected near epoch 3; keep-best handles it). Record the step where `eval_loss` bottoms out.
 - [ ] **4.6 (only if a session dies)** resume: download `last-checkpoint/` from the adapter repo (`snapshot_download(..., allow_patterns="last-checkpoint/*")`) and call `trainer.train(resume_from_checkpoint=path)`. Don't build this ahead of time; a ~1-2 h run fits in a 12 h session.
 
 ## Phase 5 — Sanity generation & publish
-- [ ] **5.1 Sanity on 10 validation rows** (end of the full run, inside the script): `FastLanguageModel.for_inference(model)`; for each row `tok.apply_chat_template(build_messages(...), add_generation_prompt=True, return_tensors="pt")`, `model.generate(max_new_tokens=512, do_sample=False)`, decode only the new tokens with `skip_special_tokens=False`. Check (a) it ends with `<|im_end|>` (stopped by itself, not at the cap), (b) `PRReviewOutput.model_validate_json(text.removesuffix("<|im_end|>"))` passes. Print `k/10` for each and write `outputs/v1/sanity.jsonl`. *Not a metric*; real numbers come from M3 on test.
-- [ ] **5.2 Final adapter push**: after `train()` the model in memory is the best checkpoint; `trainer.push_to_hub()` (or `model.push_to_hub` + `tok.push_to_hub`) to `HLeon/diff-mind-qwen2.5-coder-3b-lora`. Record the Hub commit SHA. Size should be roughly 60-120 MB (`adapter_model.safetensors`).
-- [ ] **5.3 Bring artifacts home**: download `outputs/v1/{train_summary.json,sanity.jsonl,rendered_example.txt,versions.txt}` from Kaggle into the repo's `outputs/v1/` (gitignored; the summary numbers go into docs).
+- [x] **5.1 Sanity on 10 validation rows** (end of the full run, inside the script): `FastLanguageModel.for_inference(model)`; for each row `tok.apply_chat_template(build_messages(...), add_generation_prompt=True, return_tensors="pt")`, `model.generate(max_new_tokens=512, do_sample=False)`, decode only the new tokens with `skip_special_tokens=False`. Check (a) it ends with `<|im_end|>` (stopped by itself, not at the cap), (b) `PRReviewOutput.model_validate_json(text.removesuffix("<|im_end|>"))` passes. Print `k/10` for each and write `outputs/v1/sanity.jsonl`. *Not a metric*; real numbers come from M3 on test.
+- [x] **5.2 Final adapter push**: after `train()` the model in memory is the best checkpoint; `trainer.push_to_hub()` (or `model.push_to_hub` + `tok.push_to_hub`) to `HLeon/diff-mind-qwen2.5-coder-3b-lora`. Record the Hub commit SHA. Size should be roughly 60-120 MB (`adapter_model.safetensors`).
+- [x] **5.3 Bring artifacts home**: download `outputs/v1/{train_summary.json,sanity.jsonl,rendered_example.txt,versions.txt}` from Kaggle into the repo's `outputs/v1/` (gitignored; the summary numbers go into docs).
 
 ## Phase 6 — Log & close
-- [ ] **6.1 `docs/experiments.md` row `v1`**: date, dataset revision, config + commit, W&B link, adapter Hub SHA. Metrics columns stay empty until M3. Notes: best step / eval_loss, peak VRAM, sanity k/10, deviations (warmup, batch fallback if used, 1,071 rows not 1,200).
-- [ ] **6.2 Pin Kaggle versions**: paste `versions.txt` content into a comment/cell in the notebook (`pip install unsloth==X ...`) so the run is reproducible.
-- [ ] **6.3 `docs/progress-tracker.md`**: M2 done, decisions above under Architecture Decisions, Next Up = M3.
+- [x] **6.1 `docs/experiments.md` row `v1`**: date, dataset revision, config + commit, W&B link, adapter Hub SHA. Metrics columns stay empty until M3. Notes: best step / eval_loss, peak VRAM, sanity k/10, deviations (warmup, batch fallback if used, 1,071 rows not 1,200).
+- [x] **6.2 Pin Kaggle versions**: paste `versions.txt` content into a comment/cell in the notebook (`pip install unsloth==X ...`) so the run is reproducible.
+- [x] **6.3 `docs/progress-tracker.md`**: M2 done, decisions above under Architecture Decisions, Next Up = M3.
 
 ## Exit criteria (from plan)
 `eval_loss` decreases smoothly without diverging from `train_loss`; peak VRAM < 14.5 GB on T4; LoRA adapter on HF Hub; W&B train/eval loss curves.
