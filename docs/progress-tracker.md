@@ -5,6 +5,7 @@ change.
 
 ## Current Phase
 
+- Milestone 2 (QLoRA Training, Kaggle T4): **done (training 2026-11-01, closed 2026-11-03)**: run `v1` on commit `6bf9ad6`, best `eval_loss` 0.3984 at step 125, peak VRAM 3.21 GiB, sanity 10/10 stopped and valid, adapter `HLeon/diff-mind-qwen2.5-coder-3b-lora` @ `a32dbbb5…`, W&B `ucuukj2r`. Details in `docs/experiments.md` ("v1 training notes"). Versions pinned in notebook cell 2 (6.2 done). Local `outputs/v1/` has `train_summary.json`, `rendered_example.txt`, `versions.txt` from v1; its `sanity.jsonl` is the smoke-run copy (the Hub root also holds stale smoke `train_summary.json`/`sanity.jsonl`), so the 10/10 sanity result comes from the Kaggle cell 6b output. Notebook cell 6 now deletes those smoke leftovers before the full run. To-do list: `docs/plans/milestone-2.md`.
 - Milestone 1 (Dataset Engineering & Baseline Harness): Phases 0–3, 5, 6 done; Phase 4 done except 4.4 (HF push, needs a write token). Detailed to-do list: `docs/plans/milestone-1.md`.
 
 ## Current Goal
@@ -45,7 +46,7 @@ change.
 
 ## Next Up
 
-- M2 (QLoRA training). Before it: push the dataset (4.4) so training can pin a dataset revision.
+- **M3**: merge the v1 adapter, convert to a Q4_K_M GGUF, and run `evaluate.py` on the frozen test split against the base-2shot baseline (FP 49.1%, recall 72.2%, macro-F1 0.375). Diff `outputs/v1/rendered_example.txt` against the GGUF's own chat template first (train/serve parity). Report recall by source and per category.
 
 - Phase 6.1: smoke test on ~10 validation examples with `Qwen/Qwen2.5-Coder-3B-Instruct-GGUF` (`--gguf-file '*q4_k_m.gguf'`, ~2 GB download), then 6.2 baselines on the test split. Note the test split is 132 rows, not 150.
 
@@ -56,6 +57,8 @@ change.
 - Exact Gemini Flash Lite model ID (check with a model-list call once the key is set).
 
 ## Architecture Decisions
+
+- **M2 training stack**: Kaggle T4, Unsloth + TRL `SFTTrainer`, completion-only loss via `train_on_responses_only`, W&B tracking, 3 epochs with eval/save every 25 steps and `load_best_model_at_end` on `eval_loss`. Logic lives in `src/training/train_qlora.py` + `configs/qlora_config.yaml`; the notebook is a thin runner. Training text is rebuilt from `build_messages` (no train/serve skew). Smoke runs (`--max-steps`) never push to the Hub. Adapter is private on the Hub with `hub_strategy="checkpoint"`.
 
 - **Phase 5 eval rules**: backend = local GGUF via `llama-cpp-python` (Q4_K_M), greedy, `max_tokens` 512, seed 42; keep it identical across baseline runs and use the same GGUF path for M3 (merged adapter) so comparisons stay apples-to-apples. Validity is strict (`PRReviewOutput.model_validate_json`, no fence stripping). Invalid output = not flagged: a miss for recall, not a false positive. Category F1 is diff-level over category *sets* (pred vs gold `label_json`); macro-F1 averages categories that appear in gold or predictions; line accuracy (±2 lines, only where the category matched) is reported separately. 2-shot examples = shortest defective + shortest clean train diffs (deterministic). `--limit` takes a seeded random subset (the splits are id-sorted).
 
