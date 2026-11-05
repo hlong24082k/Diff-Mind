@@ -6,10 +6,12 @@ import shutil
 from pathlib import Path
 
 
-def collect_ggufs(search_dirs: list[Path], name: str, out: Path, quants: list[str]) -> list[Path]:
-    """Unsloth's GGUF filenames/output dir vary by version (`unsloth.Q4_K_M.gguf`, `<dir>_gguf/`...).
-    Find the file for each requested quant and move it to `out/<name>-<quant>.gguf`."""
-    found = [p for d in search_dirs if d.is_dir() for p in d.rglob("*.gguf")]
+def collect_ggufs(roots: list[Path], name: str, out: Path, quants: list[str]) -> list[Path]:
+    """Unsloth's GGUF filenames/output dir vary by version and by free disk (`<dir>_gguf/`, or
+    /tmp/unsloth_saves/... when the working dir is nearly full). Look under `roots` for .gguf files inside a
+    `<name>-merged*` folder, find the one per requested quant, and move it to `out/<name>-<quant>.gguf`."""
+    prefix = f"{name}-merged"
+    found = [p for r in roots if r.is_dir() for p in r.rglob("*.gguf") if any(a.name.startswith(prefix) for a in p.parents)]
     moved = []
     for q in quants:
         hits = [p for p in found if q in p.name.lower()]
@@ -25,7 +27,7 @@ def main() -> None:
     p.add_argument("--adapter", required=True, help="Hub repo id or local adapter dir")
     p.add_argument("--subfolder", default="", help="'' = Hub root (step 125); 'last-checkpoint' = step 201")
     p.add_argument("--name", required=True, help="output prefix, e.g. v1-s125")
-    p.add_argument("--out", default="outputs/gguf")
+    p.add_argument("--out", default="outputs/gguf", help="final .gguf dir (Kaggle /kaggle/working has ~12 GB: use /tmp/gguf)")
     p.add_argument("--quant", nargs="+", default=["q4_k_m"], help="e.g. q4_k_m f16")
     p.add_argument("--expect-step", type=int, help="assert the checkpoint's trainer_state.json global_step")
     p.add_argument("--push-to", help="private Hub repo to upload the GGUFs to (HF_TOKEN from env)")
@@ -34,6 +36,9 @@ def main() -> None:
     import torch
     from huggingface_hub import HfApi, snapshot_download
     from unsloth import FastLanguageModel
+
+    # Without a GPU, Unsloth silently falls back to CPU, where merging into a 4-bit model is unsupported.
+    assert torch.cuda.is_available(), "no GPU: enable Accelerator = GPU T4 in the Kaggle session options"
 
     adapter = args.adapter
     if args.subfolder:  # Unsloth's from_pretrained has no `subfolder`, so fetch the folder and point at it
@@ -53,7 +58,7 @@ def main() -> None:
     merged = out / f"{args.name}-merged"
     model.save_pretrained_gguf(str(merged), tok, quantization_method=args.quant)
 
-    files = collect_ggufs([merged, Path(f"{merged}_gguf")], args.name, out, args.quant)
+    files = collect_ggufs([out, Path("/tmp/unsloth_saves")], args.name, out, args.quant)
     for f in files:
         print(f"{f.stat().st_size / 2**30:6.2f} GiB  {f}")
 
