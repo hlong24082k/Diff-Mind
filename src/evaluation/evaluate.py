@@ -14,6 +14,7 @@ Metric rules (diff-level; PROJECT_PLAN.md §2):
 import argparse
 import json
 import random
+import statistics
 import subprocess
 from pathlib import Path
 
@@ -98,6 +99,22 @@ def compute_metrics(rows: list[dict]) -> dict:
     }
 
 
+CI_KEYS = ("json_valid", "false_positive_rate", "defect_recall", "macro_f1", "line_accuracy")
+
+
+def bootstrap_ci(rows: list[dict], n: int = 1000, seed: int = 42) -> dict:
+    """Percentile bootstrap 95% CI: resample rows with replacement n times, recompute the metrics, take the 2.5/97.5
+    percentiles. Resamples where a metric is undefined (e.g. no clean row drawn) are skipped for that metric."""
+    rng = random.Random(seed)
+    samples = [compute_metrics(rng.choices(rows, k=len(rows))) for _ in range(n)]
+    out = {}
+    for k in CI_KEYS:
+        vals = [s[k] for s in samples if s[k] is not None]
+        q = statistics.quantiles(vals, n=40, method="inclusive") if len(vals) > 1 else None  # cut points at 1/40..39/40
+        out[k] = [q[0], q[-1]] if q else None
+    return out
+
+
 def make_generate(a):
     """-> generate(messages) -> str. Greedy decoding, fixed max_tokens and seed."""
     if a.model == "fake":
@@ -140,6 +157,7 @@ def main(argv: list[str] | None = None) -> dict:
     for p in preds:
         p["valid"] = parse(p["raw"]) is not None
     metrics = compute_metrics(preds)
+    metrics["ci95"] = bootstrap_ci(preds)
 
     run_id = a.run_id or f"base-{'0shot' if a.mode == 'zero' else '2shot'}"
     out = Path(a.out, run_id)
